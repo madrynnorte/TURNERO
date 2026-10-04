@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { bookingTypes, courts, payments, reservationSlots, reservations, staff, users, workLogs } from "@/db/schema";
 
@@ -17,6 +18,8 @@ const initialUsers = [
 
 export async function ensureSeedData() {
   const db = getDb();
+  const [seedMarker] = await db.select({ id: workLogs.id }).from(workLogs).where(eq(workLogs.id, "work-torneo-juan")).limit(1);
+  if (seedMarker) return;
   for (const [id, username, displayName, role] of initialUsers) {
     await db.insert(users).values({ id, username, displayName, role, passwordHash: initialCredentials.hash, passwordSalt: initialCredentials.salt, mustChangePassword: true }).onConflictDoNothing();
   }
