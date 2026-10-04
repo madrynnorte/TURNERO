@@ -1,0 +1,13 @@
+{
+  "name": "Turnos Madryn Norte",
+  "short_name": "Madryn Norte",
+  "description": "Agenda, cobros y personal del Complejo Deportivo Madryn Norte",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f7f6",
+  "theme_color": "#123d35",
+  "lang": "es-AR",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
