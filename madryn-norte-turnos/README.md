@@ -54,6 +54,7 @@ La declaración de almacenamiento para OpenAI Sites está en `.openai/hosting.js
 ## Documentación
 
 - [Instalación en teléfonos y PC](docs/INSTALACION.md)
+- [Publicación en Internet](docs/PUBLICACION.md)
 - [Arquitectura y seguridad](docs/ARQUITECTURA.md)
 - [Pruebas y operación](docs/PRUEBAS.md)
 
