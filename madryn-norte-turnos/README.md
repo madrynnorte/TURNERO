@@ -2,6 +2,8 @@
 
 Aplicación web instalable (PWA) para administrar las canchas del Complejo Madryn Norte desde teléfono o PC. Centraliza agenda, reservas, cobros, descuentos, personal, reportes y exportaciones CSV.
 
+Aplicación publicada: <https://madryn-norte-turnos.madryn-norte-cd.workers.dev>
+
 ## Funciones incluidas
 
 - Agenda semanal de dos canchas, con grilla de 30 minutos y vista adaptable a celular.
