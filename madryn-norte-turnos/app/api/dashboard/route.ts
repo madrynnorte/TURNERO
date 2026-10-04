@@ -1,6 +1,6 @@
-import { and, asc, eq, gte, lt } from "drizzle-orm";
+import { and, asc, eq, gte, isNotNull, lt } from "drizzle-orm";
 import { getDb } from "@/db";
-import { bookingTypes, courts, payments, reservations, staff, workLogs } from "@/db/schema";
+import { bookingTypes, courts, payments, reservations, staff, users, workLogs } from "@/db/schema";
 import { requireApiUser } from "@/lib/auth";
 
 export async function GET(request: Request) {
@@ -17,8 +17,12 @@ export async function GET(request: Request) {
     notes: reservations.notes, paymentMode: reservations.paymentMode, listPrice: reservations.listPrice,
     discountType: reservations.discountType, discountValue: reservations.discountValue, discountReason: reservations.discountReason,
     finalPrice: reservations.finalPrice, seriesId: reservations.seriesId, version: reservations.version,
-  }).from(reservations).innerJoin(courts, eq(courts.id, reservations.courtId)).innerJoin(bookingTypes, eq(bookingTypes.id, reservations.bookingTypeId))
+    createdByName: users.displayName,
+  }).from(reservations).innerJoin(courts, eq(courts.id, reservations.courtId)).innerJoin(bookingTypes, eq(bookingTypes.id, reservations.bookingTypeId)).innerJoin(users, eq(users.id, reservations.createdBy))
     .where(and(gte(reservations.startsAt, from), lt(reservations.startsAt, to))).orderBy(asc(reservations.startsAt));
+  const monthlyRows = await db.select({ seriesId: reservations.seriesId, clientName: reservations.clientName })
+    .from(reservations).where(and(eq(reservations.paymentMode, "mensual"), isNotNull(reservations.seriesId))).orderBy(asc(reservations.clientName));
+  const subscriptions = Array.from(new Map(monthlyRows.filter((item) => item.seriesId).map((item) => [item.seriesId!, item])).values());
   const paymentRows = await db.select().from(payments).where(and(gte(payments.paidAt, from), lt(payments.paidAt, to))).orderBy(asc(payments.paidAt));
   const workRows = await db.select({ id: workLogs.id, reservationId: workLogs.reservationId, staffId: workLogs.staffId, staffName: staff.name, startsAt: workLogs.startsAt, endsAt: workLogs.endsAt, functionName: workLogs.functionName, notes: workLogs.notes })
     .from(workLogs).innerJoin(staff, eq(staff.id, workLogs.staffId)).where(and(gte(workLogs.startsAt, from), lt(workLogs.startsAt, to))).orderBy(asc(workLogs.startsAt));
@@ -30,5 +34,5 @@ export async function GET(request: Request) {
   const discounts = enriched.reduce((sum, item) => sum + Math.max(0, item.listPrice - item.finalPrice), 0);
   const reservedHours = enriched.filter((item) => item.status !== "cancelado").reduce((sum, item) => sum + (Date.parse(item.endsAt) - Date.parse(item.startsAt)) / 3600000, 0);
   const staffHours = workRows.reduce((sum, item) => sum + (Date.parse(item.endsAt) - Date.parse(item.startsAt)) / 3600000, 0);
-  return Response.json({ user: auth.user, reservations: enriched, payments: paymentRows, workLogs: workRows, summary: { expected, collected, pending: Math.max(0, expected - collected), discounts, reservedHours, staffHours } });
+  return Response.json({ user: auth.user, reservations: enriched, subscriptions, payments: paymentRows, workLogs: workRows, summary: { expected, collected, pending: Math.max(0, expected - collected), discounts, reservedHours, staffHours } });
 }

@@ -1,3 +1,5 @@
 .pnpm-store/
 .tmp-workbook-tools/
+.tmp-sheet-reader/
+turnero-backup-before-import-*.sql
 entregables/

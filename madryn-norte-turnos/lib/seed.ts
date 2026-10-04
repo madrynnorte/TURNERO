@@ -18,17 +18,17 @@ const initialUsers = [
 
 export async function ensureSeedData() {
   const db = getDb();
-  const [seedMarker] = await db.select({ id: workLogs.id }).from(workLogs).where(eq(workLogs.id, "work-torneo-juan")).limit(1);
+  const [seedMarker] = await db.select({ id: users.id }).from(users).where(eq(users.id, "user-admin")).limit(1);
   if (seedMarker) return;
   for (const [id, username, displayName, role] of initialUsers) {
     await db.insert(users).values({ id, username, displayName, role, passwordHash: initialCredentials.hash, passwordSalt: initialCredentials.salt, mustChangePassword: true }).onConflictDoNothing();
   }
   await db.insert(courts).values([
-    { id: "court-main", name: "Cancha principal", color: "#0c6b58" },
+    { id: "court-main", name: "Cancha 7 sintético", color: "#0c6b58" },
     { id: "court-multi", name: "Cancha multideporte", color: "#1d78b5" },
   ]).onConflictDoNothing();
   await db.insert(bookingTypes).values([
-    { id: "type-rental", name: "Alquiler habitual", color: "#dcebf9", defaultMinutes: 60 },
+    { id: "type-rental", name: "Turno", color: "#dcebf9", defaultMinutes: 60 },
     { id: "type-fixed", name: "Turno fijo", color: "#d9f0e2", defaultMinutes: 60 },
     { id: "type-birthday", name: "Cumpleaños", color: "#eee6fb", defaultMinutes: 240 },
     { id: "type-tournament", name: "Torneo", color: "#d9f0e2", defaultMinutes: 180 },
