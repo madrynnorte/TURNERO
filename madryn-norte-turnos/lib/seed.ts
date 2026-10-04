@@ -6,7 +6,7 @@ import { bookingTypes, courts, payments, reservationSlots, reservations, staff, 
 // four times inside a Worker exceeded the first-request execution budget.
 const initialCredentials = {
   salt: "qxaA4tXgbMDwA8U6SneB2A==",
-  hash: "++LMTAZ4g4VIHQRR6pVXEBGAf+4EGh+NlQLuHqivnL0=",
+  hash: "MTpZAFvSio7cc300Zp66ESlZNLhCZuVR5TBsr9C4bI8=",
 };
 
 const initialUsers = [

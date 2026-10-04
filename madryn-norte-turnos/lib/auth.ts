@@ -4,6 +4,7 @@ import { getDb } from "@/db";
 import { sessions, users } from "@/db/schema";
 
 export const SESSION_COOKIE = "madryn_session";
+const PASSWORD_ITERATIONS = 100_000;
 
 function bytesToBase64(bytes: Uint8Array) {
   let binary = "";
@@ -19,7 +20,8 @@ function base64ToBytes(value: string) {
 export async function hashPassword(password: string, salt?: string) {
   const saltBytes = salt ? base64ToBytes(salt) : crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: saltBytes, iterations: 210_000 }, key, 256);
+  // Cloudflare Workers currently rejects PBKDF2 iteration counts above 100,000.
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: saltBytes, iterations: PASSWORD_ITERATIONS }, key, 256);
   return { hash: bytesToBase64(new Uint8Array(bits)), salt: bytesToBase64(saltBytes) };
 }
 
