@@ -86,7 +86,7 @@ export default function DashboardApp() {
     <Toaster richColors position="top-right" />
     <aside className={`sidebar ${menuOpen ? "sidebar-open" : ""}`}>
       <div className="brand"><div className="brand-mark">MN</div><div><strong>Madryn Norte</strong><span>Gestión del complejo</span></div></div>
-      <nav className="nav-list" aria-label="Secciones principales">{navItems.map(([id, label, Icon]) => <button key={id} className={`nav-item ${view === id ? "nav-item-active" : ""}`} onClick={() => { setView(id); setMenuOpen(false); }} disabled={id === "config" && user.role !== "administrador"}><Icon aria-hidden="true" /><span>{label}</span></button>)}</nav>
+      <nav className="nav-list" aria-label="Secciones principales">{navItems.map(([id, label, Icon]) => <button key={id} className={`nav-item ${view === id ? "nav-item-active" : ""}`} onClick={() => { setView(id); setMenuOpen(false); }}><Icon aria-hidden="true" /><span>{label}</span></button>)}</nav>
       <div className="sidebar-footer"><div className="avatar">{user.displayName.split(" ").map((word) => word[0]).join("").slice(0, 2)}</div><div className="user-meta"><strong>{user.displayName}</strong><span>{user.role}</span></div><button onClick={logout} aria-label="Cerrar sesión"><LogOut /></button></div>
     </aside>
     <section className="app-shell">
@@ -97,7 +97,7 @@ export default function DashboardApp() {
       {view === "cobros" && <PaymentsView data={data} open={paymentOpen} setOpen={setPaymentOpen} onSaved={loadData} />}
       {view === "personal" && <StaffView data={data} open={workOpen} setOpen={setWorkOpen} onSaved={loadData} />}
       {view === "reportes" && <ReportsView data={data} />}
-      {view === "config" && <ConfigView />}
+      {view === "config" && <ConfigView user={user} onPasswordChanged={() => setUser({ ...user, mustChangePassword: false })} />}
     </section>
   </main>;
 }
@@ -132,5 +132,16 @@ function StaffView({ data, open, setOpen, onSaved }: { data: DashboardData | nul
 }
 
 function ReportsView({ data }: { data: DashboardData | null }) { return <><div className="metric-grid"><Metric label="Ingresos previstos" value={money.format(data?.summary.expected ?? 0)} /><Metric label="Ingresos cobrados" value={money.format(data?.summary.collected ?? 0)} tone="green" /><Metric label="Saldos pendientes" value={money.format(data?.summary.pending ?? 0)} tone="amber" /><Metric label="Ocupación estimada" value={`${Math.min(100, Math.round(((data?.summary.reservedHours ?? 0) / (7 * 15 * 2)) * 100))}%`} /></div><section className="report-grid"><article className="content-card"><h2>Ingresos</h2><p>Exportá el detalle para continuar el análisis en Excel.</p><div className="download-stack"><a className="button-link" href="/api/export?kind=payments"><Download /> Cobros y abonos</a><a className="button-link secondary" href="/api/export?kind=reservations"><Download /> Reservas e importes</a></div></article><article className="content-card"><h2>Personal</h2><p>Incluye buffet, preparación y horas adicionales.</p><div className="download-stack"><a className="button-link" href="/api/export?kind=staff"><Download /> Horas de personal</a><Button variant="outline" onClick={() => window.print()}><Printer /> Imprimir / guardar PDF</Button></div></article></section></>; }
-function ConfigView() { return <section className="report-grid"><article className="content-card"><h2>Usuarios iniciales</h2><p>Los roles se aplican en el servidor.</p><ul className="config-list"><li><strong>admin</strong><span>Administrador</span></li><li><strong>encargado1</strong><span>Encargado</span></li><li><strong>encargado2</strong><span>Encargado</span></li><li><strong>consulta</strong><span>Solo lectura</span></li></ul></article><article className="content-card"><h2>Configuración operativa</h2><ul className="config-list"><li><strong>Canchas</strong><span>Principal y multideporte</span></li><li><strong>Intervalos</strong><span>30 minutos</span></li><li><strong>Medios de pago</strong><span>Efectivo, transferencia, Mercado Pago</span></li><li><strong>Historial</strong><span>Reservas, cobros y horas</span></li></ul></article></section>; }
+function ConfigView({ user, onPasswordChanged }: { user: User; onPasswordChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setBusy(true); const form = event.currentTarget; const values = new FormData(form);
+    const currentPassword = String(values.get("currentPassword")); const newPassword = String(values.get("newPassword")); const confirmation = String(values.get("confirmation"));
+    if (newPassword !== confirmation) { toast.error("La confirmación no coincide"); setBusy(false); return; }
+    const response = await fetch("/api/auth/change-password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) });
+    const result = await response.json(); setBusy(false);
+    if (!response.ok) toast.error(result.error); else { toast.success("Contraseña actualizada"); form.reset(); onPasswordChanged(); }
+  };
+  return <section className="report-grid"><article className="content-card"><h2>Seguridad de {user.displayName}</h2><p>La nueva clave cierra las demás sesiones de este usuario.</p><form className="form-grid config-password" onSubmit={submit}><label className="span-2">Contraseña actual<Input name="currentPassword" type="password" autoComplete="current-password" required /></label><label className="span-2">Nueva contraseña<Input name="newPassword" type="password" minLength={10} autoComplete="new-password" required /></label><label className="span-2">Repetir nueva contraseña<Input name="confirmation" type="password" minLength={10} autoComplete="new-password" required /></label><small className="span-2">Mínimo 10 caracteres, con mayúscula, minúscula y número.</small><Button className="span-2" disabled={busy}>{busy ? "Actualizando…" : "Cambiar contraseña"}</Button></form></article>{user.role === "administrador" && <article className="content-card"><h2>Usuarios iniciales</h2><p>Los roles se aplican en el servidor.</p><ul className="config-list"><li><strong>admin</strong><span>Administrador</span></li><li><strong>encargado1</strong><span>Encargado</span></li><li><strong>encargado2</strong><span>Encargado</span></li><li><strong>consulta</strong><span>Solo lectura</span></li></ul></article>}<article className="content-card"><h2>Configuración operativa</h2><ul className="config-list"><li><strong>Canchas</strong><span>Principal y multideporte</span></li><li><strong>Intervalos</strong><span>30 minutos</span></li><li><strong>Medios de pago</strong><span>Efectivo, transferencia, Mercado Pago</span></li><li><strong>Historial</strong><span>Reservas, cobros y horas</span></li></ul></article></section>;
+}
 function Metric({ label, value, tone = "default" }: { label: string; value: string; tone?: string }) { return <article className={`metric-card metric-${tone}`}><span>{label}</span><strong>{value}</strong></article>; }

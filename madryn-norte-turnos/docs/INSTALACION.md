@@ -36,4 +36,4 @@ Para una prueba sin publicación, iniciar el servidor siguiendo el README y abri
 
 ## Primer ingreso
 
-Ingresar con una de las cuentas iniciales documentadas en el README. La cuenta `consulta` no puede alterar datos. Cambiar las claves iniciales antes de abrir el acceso a Internet.
+Ingresar con una de las cuentas iniciales documentadas en el README. La cuenta `consulta` no puede alterar datos. Cada usuario debe abrir **Configuración** y cambiar su clave temporal antes de abrir el acceso a Internet.

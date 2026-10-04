@@ -24,7 +24,6 @@ Las actualizaciones de reservas incluyen un número de versión. Si una segunda 
 
 ## Límites conocidos de la versión 1.0
 
-- La pantalla de cambio de contraseña está pendiente; las claves iniciales deben reemplazarse antes de producción.
 - Las reservas recurrentes se identifican por serie, pero aún no existe edición masiva desde la interfaz.
 - La importación completa de todas las hojas históricas del Excel no está automatizada.
 - El service worker entrega una experiencia instalable y conserva recursos estáticos; las operaciones de escritura requieren conexión.

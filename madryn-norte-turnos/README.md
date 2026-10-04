@@ -24,7 +24,7 @@ Aplicación web instalable (PWA) para administrar las canchas del Complejo Madry
 | Encargado | `encargado2` | `Madryn2026!` |
 | Solo consulta | `consulta` | `Madryn2026!` |
 
-Las claves están marcadas para cambio obligatorio. Antes de usar el sistema en producción, completar la pantalla de cambio de contraseña o sustituir las credenciales iniciales en `lib/seed.ts` y volver a sembrar una base vacía.
+Las claves están marcadas para cambio obligatorio. Cada usuario debe entrar en **Configuración** y reemplazar la clave temporal antes del uso cotidiano.
 
 ## Desarrollo local
 
@@ -64,4 +64,4 @@ En producción, exportar D1 de forma periódica y conservar el SQL fuera de la c
 
 ## Estado de esta entrega
 
-La versión 1.0 funciona de punta a punta para el flujo diario. La importación inicial incorpora una muestra representativa del turnero vigente; la carga masiva automática de todas las hojas históricas, el editor de series recurrentes y el cambio de contraseña desde la interfaz quedan identificados como mejoras de segunda etapa.
+La versión 1.0 funciona de punta a punta para el flujo diario. La importación inicial incorpora una muestra representativa del turnero vigente; la carga masiva automática de todas las hojas históricas y el editor de series recurrentes quedan identificados como mejoras de segunda etapa.
