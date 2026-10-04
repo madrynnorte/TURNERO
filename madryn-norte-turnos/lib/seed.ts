@@ -1,6 +1,12 @@
 import { getDb } from "@/db";
 import { bookingTypes, courts, payments, reservationSlots, reservations, staff, users, workLogs } from "@/db/schema";
-import { hashPassword } from "@/lib/auth";
+
+// Precomputed once for the temporary password "Madryn2026!". Deriving this
+// four times inside a Worker exceeded the first-request execution budget.
+const initialCredentials = {
+  salt: "qxaA4tXgbMDwA8U6SneB2A==",
+  hash: "++LMTAZ4g4VIHQRR6pVXEBGAf+4EGh+NlQLuHqivnL0=",
+};
 
 const initialUsers = [
   ["user-admin", "admin", "Administrador", "administrador"],
@@ -12,8 +18,7 @@ const initialUsers = [
 export async function ensureSeedData() {
   const db = getDb();
   for (const [id, username, displayName, role] of initialUsers) {
-    const credentials = await hashPassword("Madryn2026!");
-    await db.insert(users).values({ id, username, displayName, role, passwordHash: credentials.hash, passwordSalt: credentials.salt, mustChangePassword: true }).onConflictDoNothing();
+    await db.insert(users).values({ id, username, displayName, role, passwordHash: initialCredentials.hash, passwordSalt: initialCredentials.salt, mustChangePassword: true }).onConflictDoNothing();
   }
   await db.insert(courts).values([
     { id: "court-main", name: "Cancha principal", color: "#0c6b58" },
