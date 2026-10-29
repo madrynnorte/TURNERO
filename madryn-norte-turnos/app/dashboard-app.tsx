@@ -90,6 +90,7 @@ type Reservation = {
   seriesId?: string | null;
   version: number;
   createdByName: string;
+  coverage: { id: string; name: string }[];
 };
 type Payment = {
   id: string;
@@ -113,6 +114,7 @@ type WorkLog = {
 };
 type DashboardData = {
   user: User;
+  staff: { id: string; name: string; active: boolean }[];
   reservations: Reservation[];
   subscriptions: { seriesId: string; clientName: string }[];
   payments: Payment[];
@@ -156,12 +158,6 @@ const typeOptions = [
   ["type-other", "Otro", "#F7D7B5"],
 ] as const;
 const colorChoices = typeOptions.map(([, name, color]) => ({ name, color }));
-const staffOptions = [
-  ["staff-juan", "Juan"],
-  ["staff-maria", "María"],
-  ["staff-lucia", "Lucía"],
-  ["staff-tomas", "Tomás"],
-] as const;
 const navItems = [
   ["agenda", "Agenda", CalendarDays],
   ["reservas", "Reservas", Clock3],
@@ -239,6 +235,7 @@ export default function DashboardApp() {
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [courtFilter, setCourtFilter] = useState("all");
+  const [staffFilter, setStaffFilter] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [workOpen, setWorkOpen] = useState(false);
@@ -406,11 +403,15 @@ export default function DashboardApp() {
       visualReservations.filter(
         (item) =>
           (courtFilter === "all" || item.courtId === courtFilter) &&
+          (staffFilter === "all" ||
+            (staffFilter === "unassigned"
+              ? !item.coverage?.length
+              : item.coverage?.some((person) => person.id === staffFilter))) &&
           `${item.clientName} ${item.phone} ${item.courtName}`
             .toLowerCase()
             .includes(query.toLowerCase()),
       ),
-    [visualReservations, query, courtFilter],
+    [visualReservations, query, courtFilter, staffFilter],
   );
 
   if (!authChecked)
@@ -639,8 +640,7 @@ export default function DashboardApp() {
         </header>
         {user.mustChangePassword && (
           <div className="notice">
-            Los cuatro usuarios iniciales comparten una clave temporal. Cambiala
-            antes del uso cotidiano.
+            Tu cuenta usa una contraseña temporal. Cambiala desde Configuración.
           </div>
         )}
         {view === "agenda" && (
@@ -652,6 +652,9 @@ export default function DashboardApp() {
             setWeekStart={changeWeek}
             courtFilter={courtFilter}
             setCourtFilter={setCourtFilter}
+            staffFilter={staffFilter}
+            setStaffFilter={setStaffFilter}
+            staff={data?.staff ?? []}
             dragged={dragged}
             setDragged={setDragged}
             onDropReservation={moveReservation}
@@ -791,6 +794,9 @@ function AgendaView({
   setWeekStart,
   courtFilter,
   setCourtFilter,
+  staffFilter,
+  setStaffFilter,
+  staff,
   dragged,
   setDragged,
   onDropReservation,
@@ -810,6 +816,9 @@ function AgendaView({
   setWeekStart: (value: string) => void;
   courtFilter: string;
   setCourtFilter: (value: string) => void;
+  staffFilter: string;
+  setStaffFilter: (value: string) => void;
+  staff: { id: string; name: string; active: boolean }[];
   dragged: Reservation | null;
   setDragged: (value: Reservation | null) => void;
   onDropReservation: (
@@ -1003,6 +1012,23 @@ function AgendaView({
             <span className="court-main-key">Cancha 7</span>
             <span className="court-multi-key">Fútbol 5</span>
           </div>
+          <NativeSelect
+            value={staffFilter}
+            onChange={(event) => setStaffFilter(event.target.value)}
+            aria-label="Filtrar por personal"
+          >
+            <NativeSelectOption value="all">
+              Todo el personal
+            </NativeSelectOption>
+            <NativeSelectOption value="unassigned">
+              Sin cobertura asignada
+            </NativeSelectOption>
+            {staff.map((person) => (
+              <NativeSelectOption key={person.id} value={person.id}>
+                {person.name}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
           {pendingCount > 0 && (
             <div className="pending-actions">
               <span>{pendingCount} cambio(s) sin guardar</span>
@@ -1086,6 +1112,12 @@ function AgendaView({
                           <small>
                             {item.courtName} · {item.status} · cargó{" "}
                             {item.createdByName}
+                          </small>
+                          <small>
+                            Cubre:{" "}
+                            {item.coverage
+                              ?.map((person) => person.name)
+                              .join(", ") || "Sin asignar"}
                           </small>
                         </span>
                       </button>
@@ -1217,6 +1249,15 @@ function AgendaView({
                           <Move />
                         </span>
                         <strong>{item.clientName}</strong>
+                        <small className="booking-people">
+                          Cargó: {item.createdByName}
+                        </small>
+                        <small className="booking-people">
+                          Cubre:{" "}
+                          {item.coverage
+                            ?.map((person) => person.name)
+                            .join(", ") || "Sin asignar"}
+                        </small>
                         <span>
                           {parts.time} · {item.courtName}
                         </span>
@@ -1960,6 +2001,111 @@ function EditReservationForm({
   );
 }
 
+function StaffSelector({
+  people,
+  onAdded,
+}: {
+  people: { id: string; name: string }[];
+  onAdded?: () => void;
+}) {
+  const [selected, setSelected] = useState("");
+  const [manual, setManual] = useState(false);
+  const [name, setName] = useState("");
+  const [added, setAdded] = useState<{ id: string; name: string }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const choices = Array.from(
+    new Map(
+      [...people, ...added].map((person) => [person.id, person]),
+    ).values(),
+  );
+  const add = async () => {
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/staff", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const result = (await response.json()) as {
+        person: { id: string; name: string };
+        error?: string;
+      };
+      if (!response.ok) throw new Error(result.error);
+      setAdded((current) => [...current, result.person]);
+      setSelected(result.person.id);
+      setManual(false);
+      setName("");
+      onAdded?.();
+      toast.success("Persona agregada");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo agregar la persona",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="staff-selector">
+      <NativeSelect
+        name="staffId"
+        value={selected}
+        required
+        onChange={(event) => {
+          if (event.target.value === "__other") {
+            setManual(true);
+            setSelected("");
+          } else {
+            setSelected(event.target.value);
+            setManual(false);
+          }
+        }}
+        aria-label="Seleccionar persona"
+      >
+        <NativeSelectOption value="" disabled>
+          Elegir persona
+        </NativeSelectOption>
+        {choices.map((person) => (
+          <NativeSelectOption key={person.id} value={person.id}>
+            {person.name}
+          </NativeSelectOption>
+        ))}
+        <NativeSelectOption value="__other">
+          Otro · agregar persona
+        </NativeSelectOption>
+      </NativeSelect>
+      {manual && (
+        <div className="manual-staff">
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Nombre de la persona"
+            aria-label="Nombre de otra persona"
+            maxLength={80}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void add();
+              }
+            }}
+          />
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy || !name.trim()}
+            onClick={() => void add()}
+          >
+            {busy ? "Agregando…" : "Agregar persona"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReservationCoverage({
   reservation,
   onSaved,
@@ -2058,13 +2204,7 @@ function ReservationCoverage({
       <form className="form-grid" onSubmit={submit}>
         <label>
           Persona
-          <NativeSelect name="staffId" required>
-            {people.map((person) => (
-              <NativeSelectOption key={person.id} value={person.id}>
-                {person.name}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          <StaffSelector people={people} onAdded={() => void load()} />
         </label>
         <label>
           Función
@@ -2473,13 +2613,12 @@ function StaffView({
                 <form className="form-grid" onSubmit={submit}>
                   <label>
                     Persona
-                    <NativeSelect name="staffId" className="w-full">
-                      {staffOptions.map(([id, name]) => (
-                        <NativeSelectOption key={id} value={id}>
-                          {name}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
+                    <StaffSelector
+                      people={(data?.staff ?? []).filter(
+                        (person) => person.active,
+                      )}
+                      onAdded={() => void onSaved()}
+                    />
                   </label>
                   <label>
                     Función
@@ -2710,24 +2849,20 @@ function ConfigView({
       </article>
       {user.role === "administrador" && (
         <article className="content-card">
-          <h2>Usuarios iniciales</h2>
+          <h2>Administradores</h2>
           <p>Los roles se aplican en el servidor.</p>
           <ul className="config-list">
             <li>
-              <strong>admin</strong>
+              <strong>Javier · javier</strong>
               <span>Administrador</span>
             </li>
             <li>
-              <strong>encargado1</strong>
-              <span>Encargado</span>
+              <strong>Yani · yani</strong>
+              <span>Administrador</span>
             </li>
             <li>
-              <strong>encargado2</strong>
-              <span>Encargado</span>
-            </li>
-            <li>
-              <strong>consulta</strong>
-              <span>Solo lectura</span>
+              <strong>Ezequiel · ezequiel</strong>
+              <span>Administrador</span>
             </li>
           </ul>
         </article>

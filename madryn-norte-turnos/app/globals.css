@@ -1452,12 +1452,43 @@ body .schedule-card {
   max-height: none;
   touch-action: auto;
 }
-body .schedule-card .schedule-grid { padding-bottom: 32px; }
-body .schedule-card[data-density="compact"] .booking { padding: 1px 2px; }
-body .schedule-card[data-density="compact"] .booking strong { font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 0; }
-body .schedule-card[data-density="compact"] .booking span { display: none !important; }
+body .schedule-card .schedule-grid {
+  padding-bottom: 32px;
+}
+body .schedule-card[data-density="compact"] .booking {
+  padding: 1px 2px;
+}
+body .schedule-card[data-density="compact"] .booking strong {
+  font-size: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 0;
+}
+body .schedule-card[data-density="compact"] .booking span {
+  display: none !important;
+}
 body .booking {
   touch-action: auto;
+}
+body .booking .booking-people {
+  display: block;
+  font-size: 9px;
+  line-height: 1.12;
+  color: #24463b;
+  font-weight: 600;
+}
+body .schedule-card[data-density="compact"] .booking .booking-people {
+  font-size: 7px;
+  line-height: 1;
+}
+.manual-staff {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+.staff-selector {
+  min-width: 0;
 }
 body .schedule-card.mobile-week .schedule-grid {
   min-width: calc(44px + 7 * var(--day-width, 126px));
