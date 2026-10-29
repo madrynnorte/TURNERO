@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Copy,
   CreditCard,
   Download,
   CalendarSearch,
@@ -21,6 +22,7 @@ import {
   Save,
   Search,
   Settings,
+  Trash2,
   Users,
   ZoomIn,
 } from "lucide-react";
@@ -766,6 +768,16 @@ function AgendaView({
   const [zoom, setZoom] = useState(42);
   const [mobileWeek, setMobileWeek] = useState(true);
   const pinch = useRef<{ distance: number; zoom: number } | null>(null);
+  const [touchDraggingId, setTouchDraggingId] = useState<string | null>(null);
+  const [touchDropKey, setTouchDropKey] = useState<string | null>(null);
+  const suppressBookingClick = useRef(false);
+  const touchDrag = useRef<{
+    reservation: Reservation;
+    timer: number;
+    active: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
   const pinchDistance = (event: ReactTouchEvent<HTMLElement>) =>
     Math.hypot(
       event.touches[0].clientX - event.touches[1].clientX,
@@ -780,6 +792,66 @@ function AgendaView({
     const next =
       pinch.current.zoom * (pinchDistance(event) / pinch.current.distance);
     setZoom(Math.max(24, Math.min(86, Math.round(next))));
+  };
+  const slotAtPoint = (x: number, y: number) => {
+    const element = document.elementFromPoint(x, y);
+    const slot = element?.closest<HTMLElement>(
+      ".slot[data-drop-day][data-drop-time]",
+    );
+    const day = slot?.dataset.dropDay;
+    const time = slot?.dataset.dropTime;
+    return day && time ? { day, time } : null;
+  };
+  const startBookingTouch = (
+    event: ReactTouchEvent<HTMLButtonElement>,
+    reservation: Reservation,
+  ) => {
+    if (event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const dragState = {
+      reservation,
+      active: false,
+      x: touch.clientX,
+      y: touch.clientY,
+      timer: 0,
+    };
+    dragState.timer = window.setTimeout(() => {
+      dragState.active = true;
+      suppressBookingClick.current = true;
+      setDragged(reservation);
+      setTouchDraggingId(reservation.id);
+      navigator.vibrate?.(35);
+    }, 300);
+    touchDrag.current = dragState;
+  };
+  const moveBookingTouch = (event: ReactTouchEvent<HTMLButtonElement>) => {
+    const dragState = touchDrag.current;
+    if (!dragState || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    dragState.x = touch.clientX;
+    dragState.y = touch.clientY;
+    if (!dragState.active) return;
+    event.preventDefault();
+    const target = slotAtPoint(touch.clientX, touch.clientY);
+    setTouchDropKey(target ? `${target.day}-${target.time}` : null);
+  };
+  const endBookingTouch = (event: ReactTouchEvent<HTMLButtonElement>) => {
+    const dragState = touchDrag.current;
+    if (!dragState) return;
+    window.clearTimeout(dragState.timer);
+    if (dragState.active) {
+      event.preventDefault();
+      const touch = event.changedTouches[0];
+      const target = touch ? slotAtPoint(touch.clientX, touch.clientY) : null;
+      if (target)
+        onDropReservation(dragState.reservation, target.day, target.time);
+      suppressBookingClick.current = true;
+      window.setTimeout(() => (suppressBookingClick.current = false), 500);
+    }
+    touchDrag.current = null;
+    setDragged(null);
+    setTouchDraggingId(null);
+    setTouchDropKey(null);
   };
   const jumpToDate = (value: string) => {
     if (!value) return;
@@ -1022,6 +1094,11 @@ function AgendaView({
                   <button
                     className="slot"
                     key={hour}
+                    data-drop-day={day.key}
+                    data-drop-time={hour}
+                    data-touch-target={
+                      touchDropKey === `${day.key}-${hour}` ? "true" : undefined
+                    }
                     onClick={() => onCreateAt(day.key, hour)}
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={() => {
@@ -1051,11 +1128,18 @@ function AgendaView({
                     return (
                       <button
                         draggable
-                        onClick={() => onEditReservation(item)}
+                        onClick={() => {
+                          if (suppressBookingClick.current) return;
+                          onEditReservation(item);
+                        }}
                         onDragStart={() => setDragged(item)}
                         onDragEnd={() => setDragged(null)}
+                        onTouchStart={(event) => startBookingTouch(event, item)}
+                        onTouchMove={moveBookingTouch}
+                        onTouchEnd={endBookingTouch}
+                        onTouchCancel={endBookingTouch}
                         key={item.id}
-                        className={`booking court-${item.courtId === "court-main" ? "main" : "multi"} status-${item.status}`}
+                        className={`booking court-${item.courtId === "court-main" ? "main" : "multi"} status-${item.status} ${touchDraggingId === item.id ? "touch-dragging" : ""}`}
                         style={{
                           top: `calc(${start} * var(--slot-height) + 5px)`,
                           height: `calc(${span} * var(--slot-height) - 9px)`,
@@ -1126,12 +1210,24 @@ function NewReservationDialog({
         startsAt,
         endsAt,
         color: body.color || type[2],
+        repeatWeekly: bookingTypeId === "type-fixed",
       }),
     });
     const result = await response.json();
     if (!response.ok) toast.error(result.error);
     else {
-      toast.success("Reserva creada");
+      const createdCount = Number(result.createdCount ?? 1);
+      const skippedCount = Array.isArray(result.skipped)
+        ? result.skipped.length
+        : 0;
+      toast.success(
+        createdCount > 1
+          ? `${createdCount} turnos fijos creados`
+          : "Reserva creada",
+        skippedCount
+          ? { description: `${skippedCount} fechas ocupadas fueron omitidas.` }
+          : undefined,
+      );
       setOpen(false);
       await onSaved();
     }
@@ -1235,6 +1331,22 @@ function NewReservationDialog({
               ))}
             </NativeSelect>
           </label>
+          {bookingTypeId === "type-fixed" && (
+            <label className="span-2 recurrence-field">
+              Repetir semanalmente hasta
+              <Input
+                name="repeatUntil"
+                type="date"
+                defaultValue={addDays(defaultDate, 364)}
+                min={defaultDate}
+                required
+              />
+              <small>
+                Se cargará automáticamente el mismo día y horario durante un
+                año. Las fechas ya ocupadas se omiten.
+              </small>
+            </label>
+          )}
           <label>
             Estado
             <NativeSelect name="status" className="w-full">
@@ -1400,6 +1512,73 @@ function EditReservationForm({
   const parts = localParts(reservation.startsAt);
   const duration =
     (Date.parse(reservation.endsAt) - Date.parse(reservation.startsAt)) / 60000;
+  const [copyDate, setCopyDate] = useState(addDays(parts.date, 7));
+  const [copyTime, setCopyTime] = useState(parts.time);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [deleteChoicesOpen, setDeleteChoicesOpen] = useState(false);
+  const isRecurring =
+    reservation.bookingTypeId === "type-fixed" && Boolean(reservation.seriesId);
+
+  const copyReservation = async () => {
+    setActionBusy(true);
+    const startsAt = toIso(copyDate, copyTime);
+    const endsAt = new Date(
+      Date.parse(startsAt) + duration * 60000,
+    ).toISOString();
+    const response = await fetch("/api/reservations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clientName: reservation.clientName,
+        phone: reservation.phone,
+        courtId: reservation.courtId,
+        bookingTypeId: reservation.bookingTypeId,
+        startsAt,
+        endsAt,
+        status: reservation.status,
+        color: reservation.color,
+        notes: reservation.notes,
+        paymentMode: reservation.paymentMode,
+        listPrice: reservation.listPrice,
+        repeatWeekly: false,
+      }),
+    });
+    const result = await response.json();
+    setActionBusy(false);
+    if (!response.ok) toast.error(result.error);
+    else {
+      toast.success("Reserva copiada", {
+        description: `${copyDate} a las ${copyTime}`,
+      });
+      setReservation(null);
+      await onSaved();
+    }
+  };
+
+  const deleteReservation = async (scope: "one" | "series") => {
+    const message =
+      scope === "series"
+        ? "¿Eliminar todos los turnos de esta recurrencia?"
+        : "¿Eliminar solamente esta reserva?";
+    if (!window.confirm(message)) return;
+    setActionBusy(true);
+    const response = await fetch(
+      `/api/reservations/${reservation.id}?scope=${scope}`,
+      { method: "DELETE" },
+    );
+    const result = await response.json();
+    setActionBusy(false);
+    if (!response.ok) toast.error(result.error);
+    else {
+      toast.success(
+        scope === "series"
+          ? `${result.deleted} turnos eliminados`
+          : "Reserva eliminada",
+      );
+      setReservation(null);
+      await onSaved();
+    }
+  };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1558,7 +1737,84 @@ function EditReservationForm({
             Observaciones
             <Input name="notes" defaultValue={reservation.notes} />
           </label>
+          <section className="copy-panel span-2">
+            <div className="copy-panel-title">
+              <Copy />
+              <div>
+                <strong>Copiar reserva</strong>
+                <span>Elegí la fecha y hora de la nueva copia.</span>
+              </div>
+            </div>
+            <label>
+              Fecha de la copia
+              <Input
+                type="date"
+                value={copyDate}
+                onChange={(event) => setCopyDate(event.target.value)}
+              />
+            </label>
+            <label>
+              Hora
+              <Input
+                type="time"
+                step="1800"
+                value={copyTime}
+                onChange={(event) => setCopyTime(event.target.value)}
+              />
+            </label>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={copyReservation}
+              disabled={actionBusy || !copyDate || !copyTime}
+            >
+              <Copy /> Crear copia
+            </Button>
+          </section>
+          {deleteChoicesOpen && isRecurring && (
+            <section className="delete-choice-panel span-2">
+              <strong>Este turno pertenece a una recurrencia</strong>
+              <span>¿Qué querés eliminar?</span>
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => deleteReservation("one")}
+                  disabled={actionBusy}
+                >
+                  Solo este día
+                </Button>
+                <Button
+                  type="button"
+                  className="danger-button"
+                  onClick={() => deleteReservation("series")}
+                  disabled={actionBusy}
+                >
+                  Toda la recurrencia
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setDeleteChoicesOpen(false)}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </section>
+          )}
           <div className="form-actions span-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="delete-button"
+              disabled={actionBusy}
+              onClick={() => {
+                if (isRecurring) setDeleteChoicesOpen(true);
+                else void deleteReservation("one");
+              }}
+            >
+              <Trash2 /> Eliminar
+            </Button>
             <Button
               type="button"
               variant="outline"
