@@ -15,6 +15,7 @@ import {
   List,
   LogOut,
   Menu,
+  Move,
   Minus,
   Plus,
   Printer,
@@ -29,7 +30,7 @@ import {
 import {
   CSSProperties,
   FormEvent,
-  TouchEvent as ReactTouchEvent,
+  PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -130,6 +131,13 @@ type PendingMove = {
   startsAt: string;
   endsAt: string;
   version: number;
+};
+type MutationResult = {
+  error?: string;
+  reservation: Reservation;
+  createdCount?: number;
+  skipped?: string[];
+  deleted?: number;
 };
 
 const courtOptions = [
@@ -242,6 +250,7 @@ export default function DashboardApp() {
     time: "20:00",
   });
   const [editing, setEditing] = useState<Reservation | null>(null);
+  const [moveTarget, setMoveTarget] = useState<Reservation | null>(null);
   const changeWeek = (value: string) => {
     if (
       pendingMoves.length &&
@@ -272,7 +281,9 @@ export default function DashboardApp() {
         setLoading(false);
         return;
       }
-      const payload = await response.json();
+      const payload = (await response.json()) as DashboardData & {
+        error?: string;
+      };
       if (!response.ok)
         toast.error(payload.error ?? "No se pudo cargar la agenda");
       else setData(payload);
@@ -286,7 +297,7 @@ export default function DashboardApp() {
     fetch("/api/auth/me")
       .then(async (response) => {
         if (response.ok) {
-          const payload = await response.json();
+          const payload = (await response.json()) as { user: User };
           setUser(payload.user);
           await loadData(payload.user);
         }
@@ -346,7 +357,7 @@ export default function DashboardApp() {
                 status: "pendiente",
               }),
             });
-            const result = await response.json();
+            const result = (await response.json()) as MutationResult;
             if (!response.ok) throw new Error(result.error);
             await loadData();
             return { id: result.reservation.id, status: "pendiente" };
@@ -424,15 +435,16 @@ export default function DashboardApp() {
     reservation: Reservation,
     day: string,
     time: string,
+    copy = false,
   ) => {
     const startsAt = toIso(day, time);
     const duration =
       Date.parse(reservation.endsAt) - Date.parse(reservation.startsAt);
     const endsAt = new Date(Date.parse(startsAt) + duration).toISOString();
-    if (startsAt === reservation.startsAt) return;
+    if (startsAt === reservation.startsAt && !copy) return;
     const conflict = visualReservations.some(
       (item) =>
-        item.id !== reservation.id &&
+        (copy || item.id !== reservation.id) &&
         item.courtId === reservation.courtId &&
         item.status !== "cancelado" &&
         Date.parse(item.startsAt) < Date.parse(endsAt) &&
@@ -442,6 +454,48 @@ export default function DashboardApp() {
       toast.error("Ese horario ya está ocupado en la misma cancha.");
       return;
     }
+    if (copy) {
+      if (
+        !window.confirm(
+          `¿Copiar ${reservation.clientName} al ${day} a las ${time}?`,
+        )
+      )
+        return;
+      void (async () => {
+        try {
+          const response = await fetch("/api/reservations", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              clientName: reservation.clientName,
+              phone: reservation.phone,
+              courtId: reservation.courtId,
+              bookingTypeId: reservation.bookingTypeId,
+              startsAt,
+              endsAt,
+              status: reservation.status,
+              color: reservation.color,
+              notes: reservation.notes,
+              paymentMode: reservation.paymentMode,
+              listPrice: reservation.listPrice,
+              repeatWeekly: false,
+            }),
+          });
+          const result = (await response.json()) as MutationResult;
+          if (!response.ok) throw new Error(result.error);
+          toast.success("Reserva copiada");
+          await loadData();
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo copiar la reserva",
+          );
+        }
+      })();
+      return;
+    }
+    setMoveTarget(null);
     setPendingMoves((current) => [
       ...current,
       {
@@ -481,7 +535,7 @@ export default function DashboardApp() {
             }),
           },
         );
-        const result = await response.json();
+        const result = (await response.json()) as MutationResult;
         if (!response.ok) throw new Error(result.error);
       }
       setPendingMoves([]);
@@ -610,6 +664,8 @@ export default function DashboardApp() {
             onUndo={undoMove}
             onSave={saveMoves}
             savingMoves={savingMoves}
+            moveTarget={moveTarget}
+            onCancelMove={() => setMoveTarget(null)}
           />
         )}
         {view === "reservas" && <ReservationsView reservations={visible} />}
@@ -642,6 +698,11 @@ export default function DashboardApp() {
           reservation={editing}
           setReservation={setEditing}
           onSaved={loadData}
+          onMove={(reservation) => {
+            setEditing(null);
+            setMoveTarget(reservation);
+            toast.message("Tocá el horario de destino en la agenda");
+          }}
         />
       </section>
     </main>
@@ -665,8 +726,8 @@ function LoginScreen({ onLogin }: { onLogin: (user: User) => void }) {
           password: form.get("password"),
         }),
       });
-      const payload = await response.json();
-      if (!response.ok) setError(payload.error);
+      const payload = (await response.json()) as { user: User; error?: string };
+      if (!response.ok) setError(payload.error ?? "No se pudo ingresar");
       else onLogin(payload.user);
     } catch {
       setError(
@@ -708,7 +769,6 @@ function LoginScreen({ onLogin }: { onLogin: (user: User) => void }) {
             <Input
               name="password"
               type="password"
-              defaultValue="Madryn2026!"
               autoComplete="current-password"
               required
             />
@@ -718,7 +778,6 @@ function LoginScreen({ onLogin }: { onLogin: (user: User) => void }) {
             {busy ? "Ingresando…" : "Ingresar"}
           </Button>
         </form>
-        <p className="login-help">Acceso inicial: admin / Madryn2026!</p>
       </section>
     </main>
   );
@@ -741,6 +800,8 @@ function AgendaView({
   onUndo,
   onSave,
   savingMoves,
+  moveTarget,
+  onCancelMove,
 }: {
   days: { key: string; short: string; label: string }[];
   reservations: Reservation[];
@@ -755,6 +816,7 @@ function AgendaView({
     reservation: Reservation,
     day: string,
     time: string,
+    copy?: boolean,
   ) => void;
   onCreateAt: (date: string, time: string) => void;
   onEditReservation: (reservation: Reservation) => void;
@@ -762,93 +824,52 @@ function AgendaView({
   onUndo: () => void;
   onSave: () => void;
   savingMoves: boolean;
+  moveTarget: Reservation | null;
+  onCancelMove: () => void;
 }) {
   const [mobileDay, setMobileDay] = useState(days[0]?.key ?? weekStart);
   const [compactOnly, setCompactOnly] = useState(false);
   const [zoom, setZoom] = useState(42);
   const [mobileWeek, setMobileWeek] = useState(true);
-  const pinch = useRef<{ distance: number; zoom: number } | null>(null);
   const [touchDraggingId, setTouchDraggingId] = useState<string | null>(null);
   const [touchDropKey, setTouchDropKey] = useState<string | null>(null);
   const suppressBookingClick = useRef(false);
-  const touchDrag = useRef<{
-    reservation: Reservation;
-    timer: number;
-    active: boolean;
-    x: number;
-    y: number;
-  } | null>(null);
-  const pinchDistance = (event: ReactTouchEvent<HTMLElement>) =>
-    Math.hypot(
-      event.touches[0].clientX - event.touches[1].clientX,
-      event.touches[0].clientY - event.touches[1].clientY,
-    );
-  const handleTouchStart = (event: ReactTouchEvent<HTMLElement>) => {
-    if (event.touches.length === 2)
-      pinch.current = { distance: pinchDistance(event), zoom };
-  };
-  const handleTouchMove = (event: ReactTouchEvent<HTMLElement>) => {
-    if (event.touches.length !== 2 || !pinch.current) return;
-    const next =
-      pinch.current.zoom * (pinchDistance(event) / pinch.current.distance);
-    setZoom(Math.max(24, Math.min(86, Math.round(next))));
-  };
+  const pointerDrag = useRef<Reservation | null>(null);
   const slotAtPoint = (x: number, y: number) => {
     const element = document.elementFromPoint(x, y);
-    const slot = element?.closest<HTMLElement>(
-      ".slot[data-drop-day][data-drop-time]",
-    );
-    const day = slot?.dataset.dropDay;
-    const time = slot?.dataset.dropTime;
+    const column = element?.closest<HTMLElement>(".day-column[data-day]");
+    const row = column
+      ? Math.floor((y - column.getBoundingClientRect().top) / zoom)
+      : -1;
+    const day = column?.dataset.day;
+    const time = hours[row];
     return day && time ? { day, time } : null;
   };
-  const startBookingTouch = (
-    event: ReactTouchEvent<HTMLButtonElement>,
+  const startBookingPointer = (
+    event: ReactPointerEvent<HTMLSpanElement>,
     reservation: Reservation,
   ) => {
-    if (event.touches.length !== 1) return;
-    const touch = event.touches[0];
-    const dragState = {
-      reservation,
-      active: false,
-      x: touch.clientX,
-      y: touch.clientY,
-      timer: 0,
-    };
-    dragState.timer = window.setTimeout(() => {
-      dragState.active = true;
-      suppressBookingClick.current = true;
-      setDragged(reservation);
-      setTouchDraggingId(reservation.id);
-      navigator.vibrate?.(35);
-    }, 300);
-    touchDrag.current = dragState;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointerDrag.current = reservation;
+    suppressBookingClick.current = true;
+    setTouchDraggingId(reservation.id);
   };
-  const moveBookingTouch = (event: ReactTouchEvent<HTMLButtonElement>) => {
-    const dragState = touchDrag.current;
-    if (!dragState || event.touches.length !== 1) return;
-    const touch = event.touches[0];
-    dragState.x = touch.clientX;
-    dragState.y = touch.clientY;
-    if (!dragState.active) return;
-    event.preventDefault();
-    const target = slotAtPoint(touch.clientX, touch.clientY);
+  const moveBookingPointer = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    if (!pointerDrag.current) return;
+    const target = slotAtPoint(event.clientX, event.clientY);
     setTouchDropKey(target ? `${target.day}-${target.time}` : null);
   };
-  const endBookingTouch = (event: ReactTouchEvent<HTMLButtonElement>) => {
-    const dragState = touchDrag.current;
-    if (!dragState) return;
-    window.clearTimeout(dragState.timer);
-    if (dragState.active) {
-      event.preventDefault();
-      const touch = event.changedTouches[0];
-      const target = touch ? slotAtPoint(touch.clientX, touch.clientY) : null;
+  const endBookingPointer = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    const reservation = pointerDrag.current;
+    if (!reservation) return;
+    if (event.type !== "pointercancel") {
+      const target = slotAtPoint(event.clientX, event.clientY);
       if (target)
-        onDropReservation(dragState.reservation, target.day, target.time);
-      suppressBookingClick.current = true;
-      window.setTimeout(() => (suppressBookingClick.current = false), 500);
+        onDropReservation(reservation, target.day, target.time, event.altKey);
     }
-    touchDrag.current = null;
+    window.setTimeout(() => (suppressBookingClick.current = false), 300);
+    pointerDrag.current = null;
     setDragged(null);
     setTouchDraggingId(null);
     setTouchDropKey(null);
@@ -940,7 +961,7 @@ function AgendaView({
             <label className="zoom-control">
               <button
                 type="button"
-                onClick={() => setZoom((value) => Math.max(24, value - 4))}
+                onClick={() => setZoom((value) => Math.max(12, value - 4))}
                 aria-label="Alejar calendario"
               >
                 <Minus />
@@ -948,7 +969,7 @@ function AgendaView({
               <ZoomIn />
               <input
                 type="range"
-                min="24"
+                min="12"
                 max="86"
                 step="2"
                 value={zoom}
@@ -994,6 +1015,23 @@ function AgendaView({
             </div>
           )}
         </div>
+      </div>
+      <div className="agenda-help">
+        {moveTarget ? (
+          <>
+            <strong>
+              Moviendo: {moveTarget.clientName}. Tocá el horario de destino.
+            </strong>
+            <Button size="sm" variant="outline" onClick={onCancelMove}>
+              Cancelar movimiento
+            </Button>
+          </>
+        ) : (
+          <span>
+            Deslizá para recorrer la agenda. Abrí un turno para moverlo o
+            copiarlo. En PC: Alt + arrastrar copia.
+          </span>
+        )}
       </div>
       {!compactOnly && !mobileWeek && (
         <div className="mobile-days" aria-label="Días de la semana">
@@ -1064,10 +1102,13 @@ function AgendaView({
         <section
           className={`schedule-card ${mobileWeek ? "mobile-week" : "mobile-day"}`}
           aria-busy={loading}
-          style={{ "--slot-height": `${zoom}px` } as CSSProperties}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={() => (pinch.current = null)}
+          data-density={zoom < 26 ? "compact" : "normal"}
+          style={
+            {
+              "--slot-height": `${zoom}px`,
+              "--day-width": `${Math.round(zoom * 3)}px`,
+            } as CSSProperties
+          }
         >
           <div className="schedule-grid">
             <div className="corner-cell">Hora</div>
@@ -1075,6 +1116,7 @@ function AgendaView({
               <div
                 className={`day-header ${index === 0 ? "today" : ""} ${activeMobileDay === day.key ? "mobile-active" : ""}`}
                 key={day.key}
+                data-day={day.key}
               >
                 <span>{day.short}</span>
                 <strong>{day.label}</strong>
@@ -1089,6 +1131,7 @@ function AgendaView({
               <div
                 className={`day-column ${dayIndex === 0 ? "today-column" : ""} ${activeMobileDay === day.key ? "mobile-active" : ""}`}
                 key={day.key}
+                data-day={day.key}
               >
                 {hours.map((hour) => (
                   <button
@@ -1099,11 +1142,21 @@ function AgendaView({
                     data-touch-target={
                       touchDropKey === `${day.key}-${hour}` ? "true" : undefined
                     }
-                    onClick={() => onCreateAt(day.key, hour)}
+                    onClick={() =>
+                      moveTarget
+                        ? onDropReservation(moveTarget, day.key, hour)
+                        : onCreateAt(day.key, hour)
+                    }
                     onDragOver={(event) => event.preventDefault()}
-                    onDrop={() => {
+                    onDrop={(event) => {
+                      event.preventDefault();
                       if (dragged)
-                        void onDropReservation(dragged, day.key, hour);
+                        void onDropReservation(
+                          dragged,
+                          day.key,
+                          hour,
+                          event.altKey,
+                        );
                       setDragged(null);
                     }}
                     aria-label={`Crear o mover reserva el ${day.short} a las ${hour}`}
@@ -1132,12 +1185,13 @@ function AgendaView({
                           if (suppressBookingClick.current) return;
                           onEditReservation(item);
                         }}
-                        onDragStart={() => setDragged(item)}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = "copyMove";
+                          event.dataTransfer.setData("text/plain", item.id);
+                          setDragged(item);
+                        }}
                         onDragEnd={() => setDragged(null)}
-                        onTouchStart={(event) => startBookingTouch(event, item)}
-                        onTouchMove={moveBookingTouch}
-                        onTouchEnd={endBookingTouch}
-                        onTouchCancel={endBookingTouch}
+                        onContextMenu={(event) => event.preventDefault()}
                         key={item.id}
                         className={`booking court-${item.courtId === "court-main" ? "main" : "multi"} status-${item.status} ${touchDraggingId === item.id ? "touch-dragging" : ""}`}
                         style={{
@@ -1147,6 +1201,21 @@ function AgendaView({
                           zIndex: item.courtId === "court-main" ? 5 : 4,
                         }}
                       >
+                        <span
+                          className="booking-drag-handle"
+                          role="button"
+                          aria-label={`Arrastrar ${item.clientName}`}
+                          tabIndex={-1}
+                          onClick={(event) => event.stopPropagation()}
+                          onPointerDown={(event) =>
+                            startBookingPointer(event, item)
+                          }
+                          onPointerMove={moveBookingPointer}
+                          onPointerUp={endBookingPointer}
+                          onPointerCancel={endBookingPointer}
+                        >
+                          <Move />
+                        </span>
                         <strong>{item.clientName}</strong>
                         <span>
                           {parts.time} · {item.courtName}
@@ -1213,7 +1282,7 @@ function NewReservationDialog({
         repeatWeekly: bookingTypeId === "type-fixed",
       }),
     });
-    const result = await response.json();
+    const result = (await response.json()) as MutationResult;
     if (!response.ok) toast.error(result.error);
     else {
       const createdCount = Number(result.createdCount ?? 1);
@@ -1483,10 +1552,12 @@ function EditReservationDialog({
   reservation,
   setReservation,
   onSaved,
+  onMove,
 }: {
   reservation: Reservation | null;
   setReservation: (value: Reservation | null) => void;
   onSaved: () => Promise<void>;
+  onMove: (reservation: Reservation) => void;
 }) {
   if (!reservation) return null;
   return (
@@ -1495,6 +1566,7 @@ function EditReservationDialog({
       reservation={reservation}
       setReservation={setReservation}
       onSaved={onSaved}
+      onMove={onMove}
     />
   );
 }
@@ -1503,10 +1575,12 @@ function EditReservationForm({
   reservation,
   setReservation,
   onSaved,
+  onMove,
 }: {
   reservation: Reservation;
   setReservation: (value: Reservation | null) => void;
   onSaved: () => Promise<void>;
+  onMove: (reservation: Reservation) => void;
 }) {
   const [paymentMode, setPaymentMode] = useState(reservation.paymentMode);
   const parts = localParts(reservation.startsAt);
@@ -1516,6 +1590,7 @@ function EditReservationForm({
   const [copyTime, setCopyTime] = useState(parts.time);
   const [actionBusy, setActionBusy] = useState(false);
   const [deleteChoicesOpen, setDeleteChoicesOpen] = useState(false);
+  const [showCopy, setShowCopy] = useState(false);
   const isRecurring =
     reservation.bookingTypeId === "type-fixed" && Boolean(reservation.seriesId);
 
@@ -1543,7 +1618,7 @@ function EditReservationForm({
         repeatWeekly: false,
       }),
     });
-    const result = await response.json();
+    const result = (await response.json()) as MutationResult;
     setActionBusy(false);
     if (!response.ok) toast.error(result.error);
     else {
@@ -1566,7 +1641,7 @@ function EditReservationForm({
       `/api/reservations/${reservation.id}?scope=${scope}`,
       { method: "DELETE" },
     );
-    const result = await response.json();
+    const result = (await response.json()) as MutationResult;
     setActionBusy(false);
     if (!response.ok) toast.error(result.error);
     else {
@@ -1601,7 +1676,7 @@ function EditReservationForm({
         finalPrice: body.listPrice,
       }),
     });
-    const result = await response.json();
+    const result = (await response.json()) as MutationResult;
     if (!response.ok) toast.error(result.error);
     else {
       toast.success("Reserva actualizada");
@@ -1624,6 +1699,57 @@ function EditReservationForm({
             cancha y el color.
           </DialogDescription>
         </DialogHeader>
+        <div className="reservation-quick-actions">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onMove(reservation)}
+          >
+            <Move /> Mover
+          </Button>
+          <Button
+            type="button"
+            variant={showCopy ? "default" : "outline"}
+            onClick={() => setShowCopy(!showCopy)}
+          >
+            <Copy /> Copiar
+          </Button>
+          <a className="button-link secondary" href="#reservation-coverage">
+            Personal
+          </a>
+        </div>
+        {showCopy && (
+          <section className="copy-panel">
+            <div className="copy-panel-title">
+              <Copy />
+              <strong>Copiar a otra fecha y hora</strong>
+            </div>
+            <label>
+              Fecha
+              <Input
+                type="date"
+                value={copyDate}
+                onChange={(event) => setCopyDate(event.target.value)}
+              />
+            </label>
+            <label>
+              Hora
+              <Input
+                type="time"
+                step="1800"
+                value={copyTime}
+                onChange={(event) => setCopyTime(event.target.value)}
+              />
+            </label>
+            <Button
+              type="button"
+              onClick={copyReservation}
+              disabled={actionBusy || !copyDate || !copyTime}
+            >
+              Crear copia
+            </Button>
+          </section>
+        )}
         <form key={reservation.id} className="form-grid" onSubmit={submit}>
           <label className="span-2">
             Cliente, equipo o institución
@@ -1737,7 +1863,7 @@ function EditReservationForm({
             Observaciones
             <Input name="notes" defaultValue={reservation.notes} />
           </label>
-          <section className="copy-panel span-2">
+          <section className="copy-panel span-2" hidden>
             <div className="copy-panel-title">
               <Copy />
               <div>
@@ -1825,8 +1951,162 @@ function EditReservationForm({
             <Button type="submit">Guardar cambios</Button>
           </div>
         </form>
+        <ReservationCoverage reservation={reservation} onSaved={onSaved} />
+        <p className="reservation-author">
+          Reserva cargada por <strong>{reservation.createdByName}</strong>
+        </p>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ReservationCoverage({
+  reservation,
+  onSaved,
+}: {
+  reservation: Reservation;
+  onSaved: () => Promise<void>;
+}) {
+  const [logs, setLogs] = useState<WorkLog[]>([]);
+  const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `/api/work-logs?reservationId=${encodeURIComponent(reservation.id)}`,
+      );
+      const result = (await response.json()) as {
+        error?: string;
+        workLogs: WorkLog[];
+        staff: { id: string; name: string }[];
+      };
+      if (!response.ok) throw new Error(result.error);
+      setLogs(result.workLogs);
+      setPeople(result.staff);
+      setError("");
+    } catch {
+      setError("No se pudo cargar el personal. Reintentá abriendo la reserva.");
+    }
+  }, [reservation.id]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+  const start = localParts(reservation.startsAt);
+  const end = localParts(reservation.endsAt);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    setBusy(true);
+    try {
+      const response = await fetch("/api/work-logs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          reservationId: reservation.id,
+          staffId: values.get("staffId"),
+          startsAt: new Date(
+            `${values.get("startsAt")}:00-03:00`,
+          ).toISOString(),
+          endsAt: new Date(`${values.get("endsAt")}:00-03:00`).toISOString(),
+          functionName: values.get("functionName"),
+          notes: values.get("notes"),
+        }),
+      });
+      const result = (await response.json()) as MutationResult;
+      if (!response.ok) throw new Error(result.error);
+      toast.success("Cobertura registrada en horas de personal");
+      await load();
+      await onSaved();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo registrar la cobertura",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section id="reservation-coverage" className="coverage-panel">
+      <h3>Personal que cubrió el turno</h3>
+      <p>
+        Agregá una o varias personas, antes o después del turno. Cada registro
+        suma sus horas en Personal.
+      </p>
+      {error && <p role="alert">{error}</p>}
+      {logs.map((log) => (
+        <div key={log.id} className="coverage-row">
+          <strong>{log.staffName}</strong>
+          <span>
+            {dateTime.format(new Date(log.startsAt))} →{" "}
+            {dateTime.format(new Date(log.endsAt))}
+          </span>
+          <small>
+            {log.functionName} ·{" "}
+            {(
+              (Date.parse(log.endsAt) - Date.parse(log.startsAt)) /
+              3600000
+            ).toFixed(1)}{" "}
+            h
+          </small>
+        </div>
+      ))}
+      <form className="form-grid" onSubmit={submit}>
+        <label>
+          Persona
+          <NativeSelect name="staffId" required>
+            {people.map((person) => (
+              <NativeSelectOption key={person.id} value={person.id}>
+                {person.name}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </label>
+        <label>
+          Función
+          <NativeSelect name="functionName">
+            <NativeSelectOption>Atención de cancha</NativeSelectOption>
+            <NativeSelectOption>Buffet</NativeSelectOption>
+            <NativeSelectOption>Organización de torneo</NativeSelectOption>
+            <NativeSelectOption>Limpieza o cierre</NativeSelectOption>
+            <NativeSelectOption>Otra</NativeSelectOption>
+          </NativeSelect>
+        </label>
+        <label>
+          Entrada
+          <Input
+            name="startsAt"
+            type="datetime-local"
+            defaultValue={`${start.date}T${start.time}`}
+            required
+          />
+        </label>
+        <label>
+          Salida
+          <Input
+            name="endsAt"
+            type="datetime-local"
+            defaultValue={`${end.date}T${end.time}`}
+            required
+          />
+        </label>
+        <label className="span-2">
+          Observaciones
+          <Input name="notes" />
+        </label>
+        <Button
+          className="span-2"
+          type="submit"
+          disabled={busy || !people.length}
+        >
+          {busy ? "Guardando…" : "Agregar persona y horas"}
+        </Button>
+      </form>
+    </section>
   );
 }
 
@@ -1916,7 +2196,7 @@ function PaymentsView({
         paidAt: new Date(String(body.paidAt)).toISOString(),
       }),
     });
-    const result = await response.json();
+    const result = (await response.json()) as MutationResult;
     if (!response.ok) toast.error(result.error);
     else {
       toast.success("Cobro registrado");
@@ -2135,7 +2415,7 @@ function StaffView({
         endsAt: new Date(String(body.endsAt)).toISOString(),
       }),
     });
-    const result = await response.json();
+    const result = (await response.json()) as MutationResult;
     if (!response.ok) toast.error(result.error);
     else {
       toast.success("Horas registradas");
@@ -2376,7 +2656,7 @@ function ConfigView({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ currentPassword, newPassword }),
     });
-    const result = await response.json();
+    const result = (await response.json()) as MutationResult;
     setBusy(false);
     if (!response.ok) toast.error(result.error);
     else {
