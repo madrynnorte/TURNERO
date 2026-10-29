@@ -11,20 +11,18 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import openpyxl
-from openpyxl.styles.colors import COLOR_INDEX
-
-
 TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 COURTS = {
     "main": ("court-main", range(2, 9)),
     "multi": ("court-multi", range(11, 18)),
 }
 DEFAULT_COLORS = {
-    "type-rental": "#DCEBF9",
-    "type-fixed": "#D9F0E2",
-    "type-birthday": "#EEE6FB",
-    "type-tournament": "#D9F0E2",
-    "type-training": "#DFF3F1",
+    "type-rental": "#F8E7A1",
+    "type-fixed": "#BFD7F2",
+    "type-birthday": "#F6C4D8",
+    "type-tournament": "#A8D5A2",
+    "type-tournament-external": "#BFE7F4",
+    "type-training": "#CBE8C8",
 }
 
 
@@ -66,6 +64,8 @@ def classify(name: str, raw: str) -> tuple[str, str]:
     if "cumple" in key:
         return "type-birthday", "por_encuentro"
     if "torneo" in key:
+        if "polis" in key:
+            return "type-tournament-external", "por_encuentro"
         return "type-tournament", "por_encuentro"
     if any(word in key for word in ("entren", "hockey", "basquet", "futbol", "arquero", "equipo femenino", "adol mn")):
         return "type-training", "mensual"
@@ -75,15 +75,6 @@ def classify(name: str, raw: str) -> tuple[str, str]:
 
 
 def color_for(cell, booking_type: str) -> str:
-    color = cell.fill.fgColor
-    if color.type == "rgb" and color.rgb:
-        raw = color.rgb[-6:]
-        if raw != "000000":
-            return f"#{raw.upper()}"
-    if color.type == "indexed" and color.indexed is not None and color.indexed < len(COLOR_INDEX):
-        raw = COLOR_INDEX[color.indexed][-6:]
-        if raw not in {"000000", "FFFFFF"}:
-            return f"#{raw.upper()}"
     return DEFAULT_COLORS[booking_type]
 
 

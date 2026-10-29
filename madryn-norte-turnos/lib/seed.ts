@@ -1,6 +1,15 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { bookingTypes, courts, payments, reservationSlots, reservations, staff, users, workLogs } from "@/db/schema";
+import {
+  bookingTypes,
+  courts,
+  payments,
+  reservationSlots,
+  reservations,
+  staff,
+  users,
+  workLogs,
+} from "@/db/schema";
 
 // Precomputed once for the temporary password "Madryn2026!". Deriving this
 // four times inside a Worker exceeded the first-request execution budget.
@@ -18,55 +27,322 @@ const initialUsers = [
 
 export async function ensureSeedData() {
   const db = getDb();
-  const [seedMarker] = await db.select({ id: users.id }).from(users).where(eq(users.id, "user-admin")).limit(1);
+  const [seedMarker] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, "user-admin"))
+    .limit(1);
   if (seedMarker) return;
   for (const [id, username, displayName, role] of initialUsers) {
-    await db.insert(users).values({ id, username, displayName, role, passwordHash: initialCredentials.hash, passwordSalt: initialCredentials.salt, mustChangePassword: true }).onConflictDoNothing();
+    await db
+      .insert(users)
+      .values({
+        id,
+        username,
+        displayName,
+        role,
+        passwordHash: initialCredentials.hash,
+        passwordSalt: initialCredentials.salt,
+        mustChangePassword: true,
+      })
+      .onConflictDoNothing();
   }
-  await db.insert(courts).values([
-    { id: "court-main", name: "Cancha 7 sintético", color: "#0c6b58" },
-    { id: "court-multi", name: "Cancha multideporte (fútbol 5)", color: "#1d78b5" },
-  ]).onConflictDoNothing();
-  await db.insert(bookingTypes).values([
-    { id: "type-rental", name: "Turno", color: "#dcebf9", defaultMinutes: 60 },
-    { id: "type-fixed", name: "Turno fijo", color: "#d9f0e2", defaultMinutes: 60 },
-    { id: "type-birthday", name: "Cumpleaños", color: "#eee6fb", defaultMinutes: 240 },
-    { id: "type-tournament", name: "Torneo", color: "#d9f0e2", defaultMinutes: 180 },
-    { id: "type-training", name: "Escuela o entrenamiento", color: "#dff3f1", defaultMinutes: 90 },
-    { id: "type-event", name: "Evento especial", color: "#fee6d8", defaultMinutes: 180 },
-    { id: "type-block", name: "Bloqueo interno", color: "#e5e7eb", defaultMinutes: 60 },
-    { id: "type-other", name: "Otro", color: "#fff0d7", defaultMinutes: 60 },
-  ]).onConflictDoNothing();
-  await db.insert(staff).values([
-    { id: "staff-juan", name: "Juan" }, { id: "staff-maria", name: "María" },
-    { id: "staff-lucia", name: "Lucía" }, { id: "staff-tomas", name: "Tomás" },
-  ]).onConflictDoNothing();
+  await db
+    .insert(courts)
+    .values([
+      { id: "court-main", name: "Cancha 7 sintético", color: "#0c6b58" },
+      {
+        id: "court-multi",
+        name: "Cancha multideporte (fútbol 5)",
+        color: "#1d78b5",
+      },
+    ])
+    .onConflictDoNothing();
+  await db
+    .insert(bookingTypes)
+    .values([
+      {
+        id: "type-rental",
+        name: "Turno no recurrente",
+        color: "#F8E7A1",
+        defaultMinutes: 60,
+      },
+      {
+        id: "type-fixed",
+        name: "Turno fijo",
+        color: "#BFD7F2",
+        defaultMinutes: 60,
+      },
+      {
+        id: "type-birthday",
+        name: "Cumpleañito",
+        color: "#F6C4D8",
+        defaultMinutes: 240,
+      },
+      {
+        id: "type-tournament",
+        name: "Torneo Madryn Norte",
+        color: "#A8D5A2",
+        defaultMinutes: 180,
+      },
+      {
+        id: "type-tournament-external",
+        name: "Torneo ajeno",
+        color: "#BFE7F4",
+        defaultMinutes: 180,
+      },
+      {
+        id: "type-training",
+        name: "Club / escuela Madryn Norte",
+        color: "#CBE8C8",
+        defaultMinutes: 90,
+      },
+      {
+        id: "type-event",
+        name: "Evento especial",
+        color: "#DDD0F2",
+        defaultMinutes: 180,
+      },
+      {
+        id: "type-block",
+        name: "Horario bloqueado",
+        color: "#F4B7B2",
+        defaultMinutes: 60,
+      },
+      { id: "type-other", name: "Otro", color: "#F7D7B5", defaultMinutes: 60 },
+    ])
+    .onConflictDoNothing();
+  await db
+    .insert(staff)
+    .values([
+      { id: "staff-juan", name: "Juan" },
+      { id: "staff-maria", name: "María" },
+      { id: "staff-lucia", name: "Lucía" },
+      { id: "staff-tomas", name: "Tomás" },
+    ])
+    .onConflictDoNothing();
   const sampleReservations = [
-    { id: "sample-banfield", clientName: "Banfield", courtId: "court-main", bookingTypeId: "type-fixed", startsAt: "2026-10-05T22:00:00.000Z", endsAt: "2026-10-05T23:00:00.000Z", status: "confirmado", color: "#dcebf9", paymentMode: "por_encuentro", listPrice: 28000, finalPrice: 28000 },
-    { id: "sample-torneo", clientName: "Torneo +30", courtId: "court-main", bookingTypeId: "type-tournament", startsAt: "2026-10-05T23:30:00.000Z", endsAt: "2026-10-06T01:00:00.000Z", status: "confirmado", color: "#d9f0e2", paymentMode: "por_encuentro", listPrice: 35000, finalPrice: 35000 },
-    { id: "sample-arqueros", clientName: "Arqueros Tomi", courtId: "court-main", bookingTypeId: "type-training", startsAt: "2026-10-06T21:00:00.000Z", endsAt: "2026-10-06T22:00:00.000Z", status: "confirmado", color: "#dff3f1", paymentMode: "bonificado", listPrice: 0, finalPrice: 0 },
-    { id: "sample-lisiadas", clientName: "Las Lisiadas FC", courtId: "court-main", bookingTypeId: "type-fixed", startsAt: "2026-10-07T21:00:00.000Z", endsAt: "2026-10-07T22:00:00.000Z", status: "pendiente", color: "#fff0d7", paymentMode: "mensual", listPrice: 0, finalPrice: 0, seriesId: "series-lisiadas" },
-    { id: "sample-mauricio", clientName: "Mauricio", courtId: "court-main", bookingTypeId: "type-fixed", startsAt: "2026-10-07T23:30:00.000Z", endsAt: "2026-10-08T00:30:00.000Z", status: "realizado", color: "#dcebf9", paymentMode: "por_encuentro", listPrice: 25000, finalPrice: 25000 },
-    { id: "sample-cumple", clientName: "Cumpleaños Sofía", courtId: "court-main", bookingTypeId: "type-birthday", startsAt: "2026-10-08T22:30:00.000Z", endsAt: "2026-10-09T02:30:00.000Z", status: "confirmado", color: "#eee6fb", paymentMode: "por_encuentro", listPrice: 120000, finalPrice: 120000, responsibleId: "staff-maria" },
-    { id: "sample-libre", clientName: "Torneo Libre", courtId: "court-main", bookingTypeId: "type-tournament", startsAt: "2026-10-09T22:00:00.000Z", endsAt: "2026-10-10T01:00:00.000Z", status: "confirmado", color: "#d9f0e2", paymentMode: "por_encuentro", listPrice: 65000, finalPrice: 65000, responsibleId: "staff-juan" },
-    { id: "sample-hockey", clientName: "Hockey MN", courtId: "court-main", bookingTypeId: "type-training", startsAt: "2026-10-10T21:00:00.000Z", endsAt: "2026-10-10T22:00:00.000Z", status: "confirmado", color: "#fee6d8", paymentMode: "mensual", listPrice: 0, finalPrice: 0, seriesId: "series-hockey" },
-    { id: "sample-basquet", clientName: "Básquet FCN", courtId: "court-multi", bookingTypeId: "type-training", startsAt: "2026-10-11T23:00:00.000Z", endsAt: "2026-10-12T00:00:00.000Z", status: "confirmado", color: "#dff3f1", paymentMode: "mensual", listPrice: 0, finalPrice: 0, seriesId: "series-basquet" },
+    {
+      id: "sample-banfield",
+      clientName: "Banfield",
+      courtId: "court-main",
+      bookingTypeId: "type-fixed",
+      startsAt: "2026-10-05T22:00:00.000Z",
+      endsAt: "2026-10-05T23:00:00.000Z",
+      status: "confirmado",
+      color: "#dcebf9",
+      paymentMode: "por_encuentro",
+      listPrice: 28000,
+      finalPrice: 28000,
+    },
+    {
+      id: "sample-torneo",
+      clientName: "Torneo +30",
+      courtId: "court-main",
+      bookingTypeId: "type-tournament",
+      startsAt: "2026-10-05T23:30:00.000Z",
+      endsAt: "2026-10-06T01:00:00.000Z",
+      status: "confirmado",
+      color: "#d9f0e2",
+      paymentMode: "por_encuentro",
+      listPrice: 35000,
+      finalPrice: 35000,
+    },
+    {
+      id: "sample-arqueros",
+      clientName: "Arqueros Tomi",
+      courtId: "court-main",
+      bookingTypeId: "type-training",
+      startsAt: "2026-10-06T21:00:00.000Z",
+      endsAt: "2026-10-06T22:00:00.000Z",
+      status: "confirmado",
+      color: "#dff3f1",
+      paymentMode: "bonificado",
+      listPrice: 0,
+      finalPrice: 0,
+    },
+    {
+      id: "sample-lisiadas",
+      clientName: "Las Lisiadas FC",
+      courtId: "court-main",
+      bookingTypeId: "type-fixed",
+      startsAt: "2026-10-07T21:00:00.000Z",
+      endsAt: "2026-10-07T22:00:00.000Z",
+      status: "pendiente",
+      color: "#fff0d7",
+      paymentMode: "mensual",
+      listPrice: 0,
+      finalPrice: 0,
+      seriesId: "series-lisiadas",
+    },
+    {
+      id: "sample-mauricio",
+      clientName: "Mauricio",
+      courtId: "court-main",
+      bookingTypeId: "type-fixed",
+      startsAt: "2026-10-07T23:30:00.000Z",
+      endsAt: "2026-10-08T00:30:00.000Z",
+      status: "realizado",
+      color: "#dcebf9",
+      paymentMode: "por_encuentro",
+      listPrice: 25000,
+      finalPrice: 25000,
+    },
+    {
+      id: "sample-cumple",
+      clientName: "Cumpleaños Sofía",
+      courtId: "court-main",
+      bookingTypeId: "type-birthday",
+      startsAt: "2026-10-08T22:30:00.000Z",
+      endsAt: "2026-10-09T02:30:00.000Z",
+      status: "confirmado",
+      color: "#eee6fb",
+      paymentMode: "por_encuentro",
+      listPrice: 120000,
+      finalPrice: 120000,
+      responsibleId: "staff-maria",
+    },
+    {
+      id: "sample-libre",
+      clientName: "Torneo Libre",
+      courtId: "court-main",
+      bookingTypeId: "type-tournament",
+      startsAt: "2026-10-09T22:00:00.000Z",
+      endsAt: "2026-10-10T01:00:00.000Z",
+      status: "confirmado",
+      color: "#d9f0e2",
+      paymentMode: "por_encuentro",
+      listPrice: 65000,
+      finalPrice: 65000,
+      responsibleId: "staff-juan",
+    },
+    {
+      id: "sample-hockey",
+      clientName: "Hockey MN",
+      courtId: "court-main",
+      bookingTypeId: "type-training",
+      startsAt: "2026-10-10T21:00:00.000Z",
+      endsAt: "2026-10-10T22:00:00.000Z",
+      status: "confirmado",
+      color: "#fee6d8",
+      paymentMode: "mensual",
+      listPrice: 0,
+      finalPrice: 0,
+      seriesId: "series-hockey",
+    },
+    {
+      id: "sample-basquet",
+      clientName: "Básquet FCN",
+      courtId: "court-multi",
+      bookingTypeId: "type-training",
+      startsAt: "2026-10-11T23:00:00.000Z",
+      endsAt: "2026-10-12T00:00:00.000Z",
+      status: "confirmado",
+      color: "#dff3f1",
+      paymentMode: "mensual",
+      listPrice: 0,
+      finalPrice: 0,
+      seriesId: "series-basquet",
+    },
   ];
   for (const item of sampleReservations) {
-    await db.insert(reservations).values({ ...item, phone: "", notes: "Importado del turnero vigente", discountType: "none", discountValue: 0, discountReason: "", createdBy: "user-admin", source: "excel" }).onConflictDoNothing();
+    await db
+      .insert(reservations)
+      .values({
+        ...item,
+        phone: "",
+        notes: "Importado del turnero vigente",
+        discountType: "none",
+        discountValue: 0,
+        discountReason: "",
+        createdBy: "user-admin",
+        source: "excel",
+      })
+      .onConflictDoNothing();
     const slots = [];
-    for (let time = Date.parse(item.startsAt); time < Date.parse(item.endsAt); time += 30 * 60 * 1000) slots.push({ id: `${item.id}-${time}`, reservationId: item.id, courtId: item.courtId, slotAt: new Date(time).toISOString() });
+    for (
+      let time = Date.parse(item.startsAt);
+      time < Date.parse(item.endsAt);
+      time += 30 * 60 * 1000
+    )
+      slots.push({
+        id: `${item.id}-${time}`,
+        reservationId: item.id,
+        courtId: item.courtId,
+        slotAt: new Date(time).toISOString(),
+      });
     await db.insert(reservationSlots).values(slots).onConflictDoNothing();
   }
-  await db.insert(payments).values([
-    { id: "pay-banfield", reservationId: "sample-banfield", amount: 28000, method: "efectivo", paidAt: "2026-10-05T22:05:00.000Z", createdBy: "user-admin" },
-    { id: "pay-mauricio", reservationId: "sample-mauricio", amount: 25000, method: "transferencia", paidAt: "2026-10-07T23:20:00.000Z", createdBy: "user-encargado-1" },
-    { id: "pay-cumple-sena", reservationId: "sample-cumple", amount: 40000, method: "mercado_pago", paidAt: "2026-10-01T18:00:00.000Z", notes: "Seña", createdBy: "user-admin" },
-    { id: "pay-hockey-oct", seriesId: "series-hockey", period: "2026-10", amount: 95000, method: "transferencia", paidAt: "2026-10-03T15:00:00.000Z", notes: "Abono mensual", createdBy: "user-admin" },
-  ]).onConflictDoNothing();
-  await db.insert(workLogs).values([
-    { id: "work-cumple-maria", reservationId: "sample-cumple", staffId: "staff-maria", startsAt: "2026-10-08T22:00:00.000Z", endsAt: "2026-10-09T01:00:00.000Z", functionName: "Atención de cumpleaños", createdBy: "user-admin" },
-    { id: "work-cumple-lucia", reservationId: "sample-cumple", staffId: "staff-lucia", startsAt: "2026-10-08T22:30:00.000Z", endsAt: "2026-10-09T01:30:00.000Z", functionName: "Atención de buffet", createdBy: "user-admin" },
-    { id: "work-torneo-juan", reservationId: "sample-libre", staffId: "staff-juan", startsAt: "2026-10-09T21:30:00.000Z", endsAt: "2026-10-10T01:30:00.000Z", functionName: "Organización de torneo", createdBy: "user-admin" },
-  ]).onConflictDoNothing();
+  await db
+    .insert(payments)
+    .values([
+      {
+        id: "pay-banfield",
+        reservationId: "sample-banfield",
+        amount: 28000,
+        method: "efectivo",
+        paidAt: "2026-10-05T22:05:00.000Z",
+        createdBy: "user-admin",
+      },
+      {
+        id: "pay-mauricio",
+        reservationId: "sample-mauricio",
+        amount: 25000,
+        method: "transferencia",
+        paidAt: "2026-10-07T23:20:00.000Z",
+        createdBy: "user-encargado-1",
+      },
+      {
+        id: "pay-cumple-sena",
+        reservationId: "sample-cumple",
+        amount: 40000,
+        method: "mercado_pago",
+        paidAt: "2026-10-01T18:00:00.000Z",
+        notes: "Seña",
+        createdBy: "user-admin",
+      },
+      {
+        id: "pay-hockey-oct",
+        seriesId: "series-hockey",
+        period: "2026-10",
+        amount: 95000,
+        method: "transferencia",
+        paidAt: "2026-10-03T15:00:00.000Z",
+        notes: "Abono mensual",
+        createdBy: "user-admin",
+      },
+    ])
+    .onConflictDoNothing();
+  await db
+    .insert(workLogs)
+    .values([
+      {
+        id: "work-cumple-maria",
+        reservationId: "sample-cumple",
+        staffId: "staff-maria",
+        startsAt: "2026-10-08T22:00:00.000Z",
+        endsAt: "2026-10-09T01:00:00.000Z",
+        functionName: "Atención de cumpleaños",
+        createdBy: "user-admin",
+      },
+      {
+        id: "work-cumple-lucia",
+        reservationId: "sample-cumple",
+        staffId: "staff-lucia",
+        startsAt: "2026-10-08T22:30:00.000Z",
+        endsAt: "2026-10-09T01:30:00.000Z",
+        functionName: "Atención de buffet",
+        createdBy: "user-admin",
+      },
+      {
+        id: "work-torneo-juan",
+        reservationId: "sample-libre",
+        staffId: "staff-juan",
+        startsAt: "2026-10-09T21:30:00.000Z",
+        endsAt: "2026-10-10T01:30:00.000Z",
+        functionName: "Organización de torneo",
+        createdBy: "user-admin",
+      },
+    ])
+    .onConflictDoNothing();
 }
