@@ -2,4 +2,7 @@
 .tmp-workbook-tools/
 .tmp-sheet-reader/
 turnero-backup-before-import-*.sql
+TURNERO_VIGENTE_IMPORT.xlsx
+madryn-norte-turnos/drizzle/*_refresh_turnero_vigente.sql
+madryn-norte-web/
 entregables/

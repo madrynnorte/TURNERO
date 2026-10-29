@@ -45,7 +45,10 @@ export async function GET(request: Request) {
 
   return Response.json(
     {
-      courts: courtRows,
+      courts: courtRows.map((court) => ({
+        ...court,
+        publicPrice: court.id === "court-main" ? 40000 : court.id === "court-multi" ? 25000 : null,
+      })),
       occupied: occupiedRows,
       opening: { start: "15:00", end: "24:00", slotMinutes: 30, bookingMinutes: 60 },
       generatedAt: new Date().toISOString(),

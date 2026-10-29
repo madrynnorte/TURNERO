@@ -25,7 +25,7 @@ export async function ensureSeedData() {
   }
   await db.insert(courts).values([
     { id: "court-main", name: "Cancha 7 sintético", color: "#0c6b58" },
-    { id: "court-multi", name: "Cancha multideporte", color: "#1d78b5" },
+    { id: "court-multi", name: "Cancha multideporte (fútbol 5)", color: "#1d78b5" },
   ]).onConflictDoNothing();
   await db.insert(bookingTypes).values([
     { id: "type-rental", name: "Turno", color: "#dcebf9", defaultMinutes: 60 },
